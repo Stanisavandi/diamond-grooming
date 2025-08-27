@@ -4,9 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+// Library kompresi gambar dinonaktifkan sementara untuk perbaikan di lingkungan pratinjau
+// import imageCompression from 'browser-image-compression';
+
 
 // --- KONFIGURASI FIREBASE ---
-// Kunci API Anda sudah benar.
+// Ganti dengan konfigurasi Firebase Anda
 const firebaseConfig = {
   apiKey: "AIzaSyAEsaCV7nSC7rIbKFhUvGrjJBPxL0_Glkw",
   authDomain: "diamond-grooming.firebaseapp.com",
@@ -132,14 +135,10 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
         }
         setIsCalculating(true);
         
-        // --- PENTING: Ganti dengan koordinat dan API Key Anda ---
         const originCoordinates = "-7.543240049482117, 110.8144302252995"; // Ganti dengan KOORDINAT LOKASI ANDA
         const apiKey = "AIzaSyBPn3p1ZkywKB7DWxkZo0oPBHaCyoIS9X0"; // Ganti dengan API Key Anda
-        // ----------------------------------------------------
         
         const destinationAddress = bookingDetails.customerAddress;
-
-        // URL untuk memanggil API Google. Kita butuh proxy untuk menghindari masalah CORS.
         const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
         const apiUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${originCoordinates}&destinations=${encodeURIComponent(destinationAddress)}&key=${apiKey}`;
 
@@ -179,6 +178,9 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
     
     const confirmBooking = async () => {
         setIsUploading(true);
+        setAlertInfo({title: 'Proses...', message: 'Sedang mengunggah gambar dan menyimpan data. Mohon tunggu...'});
+
+        // Fungsi upload sekarang tanpa kompresi
         const uploadFile = async (file, path) => {
             if (!file) return '';
             const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
