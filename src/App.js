@@ -171,11 +171,11 @@ const App = () => {
       setIsCalculating(true);
 
       // --- PENTING: Ganti dengan alamat dan API Key Anda ---
-      const originAddress = "Jl. Singasari Selatan I No.46, Nusukan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57135"; // Ganti dengan alamat lengkap Anda
-      const apiKey = "AIzaSyBPn3p1ZkywKB7DWxkZo0oPBHaCyoIS9X0"; // Ganti dengan API Key Anda
+      // const originAddress = "Jl. Singasari Selatan I No.46, Nusukan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57135"; // Ganti dengan alamat lengkap Anda
+      // const apiKey = "AIzaSyBPn3p1ZkywKB7DWxkZo0oPBHaCyoIS9X0"; // Ganti dengan API Key Anda
       // ----------------------------------------------------
 
-      const destinationAddress = bookingDetails.customerAddress;
+      // const destinationAddress = bookingDetails.customerAddress;
       
       // Karena batasan lingkungan, kita tidak bisa memanggil API eksternal.
       // Kode di bawah ini adalah SIMULASI dari apa yang seharusnya terjadi.
