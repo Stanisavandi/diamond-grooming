@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 // Impor library Firebase untuk menghubungkan ke database dan storage
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-// Library kompresi gambar dinonaktifkan sementara untuk perbaikan di lingkungan pratinjau
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
+// Impor library untuk kompresi gambar dinonaktifkan sementara untuk perbaikan
 // import imageCompression from 'browser-image-compression';
 
 
@@ -179,6 +179,7 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
     const confirmBooking = async () => {
         setIsUploading(true);
         
+        // Fungsi upload sederhana tanpa kompresi
         const uploadFile = async (file, path) => {
             if (!file) return '';
             const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
