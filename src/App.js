@@ -6,12 +6,12 @@ import { getFirestore, collection, addDoc, onSnapshot, query } from 'firebase/fi
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // --- KONFIGURASI FIREBASE ---
-// Ganti dengan konfigurasi Firebase Anda
+// Kunci API Anda sudah benar.
 const firebaseConfig = {
   apiKey: "AIzaSyAEsaCV7nSC7rIbKFhUvGrjJBPxL0_Glkw",
   authDomain: "diamond-grooming.firebaseapp.com",
   projectId: "diamond-grooming",
-  storageBucket: "diamond-grooming.firebasestorage.app",
+  storageBucket: "diamond-grooming.appspot.com",
   messagingSenderId: "126112552950",
   appId: "1:126112552950:web:303c4f6d55160a028f99d7"
 };
@@ -133,23 +133,40 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
         setIsCalculating(true);
         
         // --- PENTING: Ganti dengan koordinat dan API Key Anda ---
-        // const originCoordinates = "-7.543240049482117, 110.8144302252995"; // Ganti dengan KOORDINAT LOKASI ANDA
-        // const apiKey = "AIzaSyBPn3p1ZkywKB7DWxkZo0oPBHaCyoIS9X0";
+        const originCoordinates = "-7.543240049482117, 110.8144302252995"; // Ganti dengan KOORDINAT LOKASI ANDA
+        const apiKey = "AIzaSyBPn3p1ZkywKB7DWxkZo0oPBHaCyoIS9X0"; // Ganti dengan API Key Anda
         // ----------------------------------------------------
         
-        // const destinationAddress = bookingDetails.customerAddress;
-        
-        // SIMULASI: Anggap jaraknya acak antara 1 dan 60 km
-        const simulatedDistanceInKm = Math.random() * 59 + 1;
-        
-        let fee = 0;
-        if (simulatedDistanceInKm > 25 && simulatedDistanceInKm <= 55) fee = 50000;
-        else if (simulatedDistanceInKm > 12 && simulatedDistanceInKm <= 25) fee = 35000;
-        else if (simulatedDistanceInKm > 6 && simulatedDistanceInKm <= 12) fee = 25000;
-        else if (simulatedDistanceInKm >= 2 && simulatedDistanceInKm <= 6) fee = 20000;
-        setBookingDetails(prev => ({ ...prev, transportFee: fee }));
-        setAlertInfo({ title: 'Kalkulasi Selesai (Simulasi)', message: `Estimasi jarak adalah ${simulatedDistanceInKm.toFixed(1)} km. Biaya kunjungan sebesar ${formatCurrency(fee)} telah ditambahkan.` });
-        setIsCalculating(false);
+        const destinationAddress = bookingDetails.customerAddress;
+
+        // URL untuk memanggil API Google. Kita butuh proxy untuk menghindari masalah CORS.
+        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+        const apiUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${originCoordinates}&destinations=${encodeURIComponent(destinationAddress)}&key=${apiKey}`;
+
+        try {
+            const response = await fetch(proxyUrl + apiUrl);
+            const data = await response.json();
+
+            if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+                const distanceInMeters = data.rows[0].elements[0].distance.value;
+                const distanceInKm = distanceInMeters / 1000;
+
+                let fee = 0;
+                if (distanceInKm > 25 && distanceInKm <= 55) fee = 50000;
+                else if (distanceInKm > 12 && distanceInKm <= 25) fee = 35000;
+                else if (distanceInKm > 6 && distanceInKm <= 12) fee = 25000;
+                else if (distanceInKm >= 2 && distanceInKm <= 6) fee = 20000;
+
+                setBookingDetails(prev => ({ ...prev, transportFee: fee }));
+                setAlertInfo({ title: 'Kalkulasi Selesai', message: `Estimasi jarak adalah ${distanceInKm.toFixed(1)} km. Biaya kunjungan sebesar ${formatCurrency(fee)} telah ditambahkan.` });
+            } else {
+                throw new Error(data.error_message || 'Tidak dapat menghitung jarak. Pastikan alamat valid.');
+            }
+        } catch (error) {
+            setAlertInfo({ title: 'Kalkulasi Gagal', message: `Terjadi kesalahan: ${error.message}. Silakan coba lagi.` });
+        } finally {
+            setIsCalculating(false);
+        }
     };
 
     const handlePetDetailsSubmit = () => {
