@@ -178,9 +178,7 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
     
     const confirmBooking = async () => {
         setIsUploading(true);
-        setAlertInfo({title: 'Proses...', message: 'Sedang mengunggah gambar dan menyimpan data. Mohon tunggu...'});
-
-        // Fungsi upload sekarang tanpa kompresi
+        
         const uploadFile = async (file, path) => {
             if (!file) return '';
             const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
