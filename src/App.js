@@ -3,9 +3,8 @@ import React, { useState, useEffect } from 'react';
 // Impor library Firebase untuk menghubungkan ke database dan storage
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage'; 
-// Impor library untuk kompresi gambar dinonaktifkan sementara untuk perbaikan
-// import imageCompression from 'browser-image-compression';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'; // Pastikan 'uploadBytesResumable' diimpor
+// Impor library untuk kompresi gambar dihapus
 
 
 // --- KONFIGURASI FIREBASE ---
@@ -48,10 +47,10 @@ const CustomAlert = ({ title, message, onClose }) => {
     if (!title) return null;
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+        <div className="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full font-sans">
           <h3 className="text-lg font-bold text-slate-800">{title}</h3>
           <p className="text-slate-600 mt-2 mb-4">{message}</p>
-          <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg" onClick={onClose}>
+          <button className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg transition-colors" onClick={onClose}>
             Tutup
           </button>
         </div>
@@ -70,24 +69,24 @@ const HomeScreen = ({ appointments, onNavigate }) => {
 
     return (
       <div className="text-center">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-2">🐾 DIAMOND GROOMING 🐾</h1>
+        <h1 className="font-display text-4xl sm:text-5xl font-bold text-slate-800 mb-2">🐾 DIAMOND GROOMING 🐾</h1>
         <p className="text-base sm:text-lg text-slate-600 mb-8">Solusi perawatan terbaik untuk sahabat bulu Anda.</p>
         
         {upcomingAppointments.length > 0 && (
-          <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg mb-8 text-left shadow-md">
-            <p className="font-bold text-lg">🔔 Pengingat Jadwal</p>
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg mb-8 text-left shadow-sm">
+            <p className="font-bold text-base">🔔 Pengingat Jadwal</p>
             {upcomingAppointments.map(app => (
-              <p key={app.id} className="mt-1">
+              <p key={app.id} className="mt-1 text-sm">
                 Jangan lupa, besok adalah jadwal grooming untuk {app.petName} ({app.petType}) pada pukul {app.time}.
               </p>
             ))}
           </div>
         )}
 
-        <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 sm:py-4 px-5 rounded-xl text-lg shadow-lg transition-transform transform hover:scale-105 mb-4" onClick={() => onNavigate('booking')}>
+        <button className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-4 px-5 rounded-xl text-lg shadow-lg transition-all transform hover:scale-105 mb-4" onClick={() => onNavigate('booking')}>
           Booking Jadwal Grooming
         </button>
-        <button className="w-full bg-gray-200 hover:bg-gray-300 text-slate-800 font-bold py-3 sm:py-4 px-5 rounded-xl text-lg shadow-lg transition-transform transform hover:scale-105" onClick={() => onNavigate('todays_schedule')}>
+        <button className="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-4 px-5 rounded-xl text-lg shadow-lg transition-all transform hover:scale-105" onClick={() => onNavigate('todays_schedule')}>
           Jadwal Hari Ini (Admin)
         </button>
       </div>
@@ -104,6 +103,8 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
     const [petImageFile, setPetImageFile] = useState(null);
     const [houseImageFile, setHouseImageFile] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadMessage, setUploadMessage] = useState('');
     const [isCalculating, setIsCalculating] = useState(false);
     const [alertInfo, setAlertInfo] = useState({ title: '', message: '' });
 
@@ -178,26 +179,40 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
     
     const confirmBooking = async () => {
         setIsUploading(true);
-        
-        // Fungsi upload sederhana tanpa kompresi
-        const uploadFile = async (file, path) => {
-            if (!file) return '';
-            const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-            try {
-                const snapshot = await uploadBytes(storageRef, file);
-                return await getDownloadURL(snapshot.ref);
-            } catch (error) {
-                console.error(`Error uploading ${path}: `, error);
-                throw new Error(`Gagal mengunggah foto ${path}.`);
-            }
+        setUploadMessage('Memulai proses...');
+
+        const uploadFileWithProgress = (file, path, onProgress) => {
+            return new Promise((resolve, reject) => {
+                if (!file) return resolve('');
+                
+                setUploadMessage(`Mengunggah foto ${path}...`);
+                const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+                const uploadTask = uploadBytesResumable(storageRef, file);
+
+                uploadTask.on('state_changed', 
+                    (snapshot) => {
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        onProgress(progress);
+                    }, 
+                    (error) => {
+                        console.error(`Error uploading ${path}: `, error);
+                        reject(new Error(`Gagal mengunggah foto ${path}.`));
+                    }, 
+                    async () => {
+                        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                        resolve(downloadURL);
+                    }
+                );
+            });
         };
 
         try {
-            const [petImageUrl, houseImageUrl] = await Promise.all([
-                uploadFile(petImageFile, 'pets'),
-                uploadFile(houseImageFile, 'houses')
-            ]);
+            const petImageUrl = await uploadFileWithProgress(petImageFile, 'hewan', setUploadProgress);
+            const houseImageUrl = await uploadFileWithProgress(houseImageFile, 'rumah', setUploadProgress);
+            
+            setUploadMessage('Menyimpan data booking...');
             await addDoc(collection(db, "appointments"), { ...bookingDetails, petImageUrl, houseImageUrl });
+            
             onBookingSuccess();
         } catch (error) {
             setAlertInfo({ title: 'Booking Gagal', message: error.message || 'Terjadi kesalahan saat menyimpan jadwal.' });
@@ -209,19 +224,28 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
     return (
         <div className="w-full">
             <CustomAlert title={alertInfo.title} message={alertInfo.message} onClose={() => setAlertInfo({ title: '', message: '' })} />
-            <h1 className="text-3xl font-bold text-slate-800 text-center mb-8">Buat Jadwal Baru</h1>
+            {isUploading && (
+                 <div className="fixed inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-50 p-4 text-white font-sans">
+                    <h3 className="text-xl font-bold">{uploadMessage}</h3>
+                    <div className="w-full max-w-xs bg-gray-600 rounded-full h-2.5 mt-4">
+                        <div className="bg-teal-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
+                    <p className="mt-2">{Math.round(uploadProgress)}%</p>
+                 </div>
+            )}
+            <h1 className="font-display text-3xl font-bold text-slate-800 text-center mb-8">Buat Jadwal Baru</h1>
             
             {bookingStep === 1 && (
                 <div>
-                  <h2 className="text-2xl font-semibold text-slate-700 mb-4">Langkah 1: Pilih Layanan</h2>
+                  <h2 className="text-2xl font-semibold text-slate-700 mb-4 font-display">Langkah 1: Pilih Layanan</h2>
                   {Object.entries(groupedServices).map(([category, services]) => (
                       <div key={category} className="mb-6">
-                          <h3 className="text-xl font-bold text-slate-600 mb-3 border-b-2 pb-2">{category}</h3>
+                          <h3 className="text-xl font-bold text-slate-500 mb-3 border-b-2 pb-2 font-display">{category}</h3>
                           {services.map(service => (
-                            <button key={service.id} className="w-full bg-white p-4 rounded-lg mb-3 border-2 border-gray-200 hover:border-blue-500 text-left transition-all shadow-sm" onClick={() => { setBookingDetails(prev => ({ ...prev, service })); setBookingStep(2); }}>
+                            <button key={service.id} className="w-full bg-white p-4 rounded-xl mb-3 border-2 border-gray-200 hover:border-teal-500 hover:shadow-md text-left transition-all" onClick={() => { setBookingDetails(prev => ({ ...prev, service })); setBookingStep(2); }}>
                               <p className="text-base sm:text-lg font-bold text-slate-800">{service.name}</p>
                               <p className="text-xs sm:text-sm text-slate-500 mt-1">Durasi: ~{service.duration} jam, Beban: {service.slotWeight} slot/hewan</p>
-                              <p className="text-sm sm:text-md text-blue-600 font-semibold mt-1">{formatCurrency(service.price)}</p>
+                              <p className="text-sm sm:text-md text-teal-600 font-semibold mt-1">{formatCurrency(service.price)}</p>
                             </button>
                           ))}
                       </div>
@@ -231,7 +255,7 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
 
             {bookingStep === 2 && (
                 <div>
-                  <h2 className="text-2xl font-semibold text-slate-700 mb-4">Langkah 2: Pilih Tanggal & Waktu</h2>
+                  <h2 className="text-2xl font-semibold text-slate-700 mb-4 font-display">Langkah 2: Pilih Tanggal & Waktu</h2>
                   <label className="block text-md font-medium text-slate-600 mb-2">Pilih Tanggal (7 Hari ke Depan)</label>
                   <div className="grid grid-cols-4 gap-2 mb-6">
                     {[...Array(7)].map((_, i) => {
@@ -242,7 +266,7 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
                       const dayNumber = date.getDate();
                       const isSelected = bookingDetails.date === dateString;
                       return (
-                        <button key={i} className={`p-2 rounded-lg border text-center ${isSelected ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-700 border-gray-300'}`} onClick={() => setBookingDetails(prev => ({...prev, date: dateString}))}>
+                        <button key={i} className={`p-2 rounded-lg border text-center transition-colors ${isSelected ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-700 border-gray-300 hover:bg-slate-50'}`} onClick={() => setBookingDetails(prev => ({...prev, date: dateString}))}>
                           <span className="block text-sm">{dayName}</span>
                           <span className="block font-bold text-lg">{dayNumber}</span>
                         </button>
@@ -271,7 +295,7 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
                           }
 
                           return (
-                            <button key={index} className={`font-bold py-3 px-4 rounded-lg shadow-md transition-all text-center ${isAvailable ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} onClick={() => isAvailable && (() => { setBookingDetails(prev => ({ ...prev, time })); setBookingStep(3); })()} disabled={!isAvailable}>
+                            <button key={index} className={`font-bold py-3 px-4 rounded-lg shadow-sm transition-all text-center ${isAvailable ? 'bg-teal-500 hover:bg-teal-600 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`} onClick={() => isAvailable && (() => { setBookingDetails(prev => ({ ...prev, time })); setBookingStep(3); })()} disabled={!isAvailable}>
                               <span className="block">{time}</span>
                               <span className="block text-xs font-normal">{isAvailable ? `(Sisa ${minRemainingSlots} slot)` : '(Penuh/Waktu tidak cukup)'}</span>
                             </button>
@@ -280,24 +304,24 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
                       </div>
                     </>
                   )}
-                  <button className="w-full mt-6 text-slate-600 font-semibold py-2" onClick={() => setBookingStep(1)}>Kembali</button>
+                  <button className="w-full mt-8 text-slate-600 font-semibold py-2" onClick={() => setBookingStep(1)}>Kembali</button>
                 </div>
             )}
 
             {bookingStep === 3 && (
                 <div>
-                  <h2 className="text-2xl font-semibold text-slate-700 mb-4">Langkah 3: Detail Customer & Peliharaan</h2>
+                  <h2 className="text-2xl font-semibold text-slate-700 mb-4 font-display">Langkah 3: Detail Customer & Peliharaan</h2>
                   <div className="space-y-4">
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Nomor HP Customer</label>
-                          <input type="tel" className="w-full p-3 border border-gray-300 rounded-lg" placeholder="Contoh: 081234567890" value={bookingDetails.customerPhone} onChange={(e) => setBookingDetails(prev => ({ ...prev, customerPhone: e.target.value }))} />
+                          <input type="tel" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition" placeholder="Contoh: 081234567890" value={bookingDetails.customerPhone} onChange={(e) => setBookingDetails(prev => ({ ...prev, customerPhone: e.target.value }))} />
                       </div>
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Alamat Lengkap (Untuk Grooming Visit)</label>
-                          <textarea className="w-full p-3 border border-gray-300 rounded-lg mb-2 h-28" placeholder="Masukkan alamat lengkap..." value={bookingDetails.customerAddress} onChange={(e) => setBookingDetails(prev => ({ ...prev, customerAddress: e.target.value }))} />
+                          <textarea className="w-full p-3 border border-gray-300 rounded-lg mb-2 h-28 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition" placeholder="Masukkan alamat lengkap..." value={bookingDetails.customerAddress} onChange={(e) => setBookingDetails(prev => ({ ...prev, customerAddress: e.target.value }))} />
                           <div className="flex flex-col sm:flex-row gap-2">
-                            <button className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm" onClick={handleGetLocation}>📍 Gunakan Lokasi GPS</button>
-                            <button className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg text-sm disabled:bg-orange-300" onClick={handleCalculateFee} disabled={isCalculating}>
+                            <button className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors" onClick={handleGetLocation}>📍 Gunakan Lokasi GPS</button>
+                            <button className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg text-sm disabled:bg-orange-300 transition-colors" onClick={handleCalculateFee} disabled={isCalculating}>
                                 {isCalculating ? 'Menghitung...' : '🚗 Hitung Biaya Kunjungan'}
                             </button>
                           </div>
@@ -305,42 +329,42 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
                       </div>
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Foto Rumah (Patokan)</label>
-                          <input type="file" accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setHouseImageFile(e.target.files[0])} />
+                          <input type="file" accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100" onChange={(e) => setHouseImageFile(e.target.files[0])} />
                       </div>
                        <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Jumlah Hewan</label>
-                          <input type="number" min="1" className="w-full p-3 border border-gray-300 rounded-lg" value={bookingDetails.numberOfPets} onChange={(e) => setBookingDetails(prev => ({ ...prev, numberOfPets: Math.max(1, parseInt(e.target.value) || 1) }))} />
+                          <input type="number" min="1" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition" value={bookingDetails.numberOfPets} onChange={(e) => setBookingDetails(prev => ({ ...prev, numberOfPets: Math.max(1, parseInt(e.target.value) || 1) }))} />
                       </div>
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Nama Hewan</label>
-                          <input type="text" className="w-full p-3 border border-gray-300 rounded-lg" placeholder="Contoh: Mochi, Brownie (jika > 1)" value={bookingDetails.petName} onChange={(e) => setBookingDetails(prev => ({ ...prev, petName: e.target.value }))} />
+                          <input type="text" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition" placeholder="Contoh: Mochi, Brownie (jika > 1)" value={bookingDetails.petName} onChange={(e) => setBookingDetails(prev => ({ ...prev, petName: e.target.value }))} />
                       </div>
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Foto Hewan (Opsional)</label>
-                          <input type="file" accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setPetImageFile(e.target.files[0])} />
+                          <input type="file" accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100" onChange={(e) => setPetImageFile(e.target.files[0])} />
                       </div>
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Jenis Hewan</label>
                           <div className="flex gap-4">
-                            <button className={`flex-1 p-3 rounded-lg border-2 text-lg ${bookingDetails.petType === 'Anjing' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-700 border-gray-300'}`} onClick={() => setBookingDetails(prev => ({ ...prev, petType: 'Anjing' }))}>🐶 Anjing</button>
-                            <button className={`flex-1 p-3 rounded-lg border-2 text-lg ${bookingDetails.petType === 'Kucing' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-700 border-gray-300'}`} onClick={() => setBookingDetails(prev => ({ ...prev, petType: 'Kucing' }))}>🐱 Kucing</button>
+                            <button className={`flex-1 p-3 rounded-lg border-2 text-lg transition-colors ${bookingDetails.petType === 'Anjing' ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-700 border-gray-300'}`} onClick={() => setBookingDetails(prev => ({ ...prev, petType: 'Anjing' }))}>🐶 Anjing</button>
+                            <button className={`flex-1 p-3 rounded-lg border-2 text-lg transition-colors ${bookingDetails.petType === 'Kucing' ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-700 border-gray-300'}`} onClick={() => setBookingDetails(prev => ({ ...prev, petType: 'Kucing' }))}>🐱 Kucing</button>
                           </div>
                       </div>
                       <div>
                           <label className="block text-md font-medium text-slate-600 mb-2">Catatan Khusus (Opsional)</label>
-                          <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24" placeholder="Contoh: Alergi shampoo tertentu" value={bookingDetails.notes} onChange={(e) => setBookingDetails(prev => ({ ...prev, notes: e.target.value }))} />
+                          <textarea className="w-full p-3 border border-gray-300 rounded-lg h-24 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition" placeholder="Contoh: Alergi shampoo tertentu" value={bookingDetails.notes} onChange={(e) => setBookingDetails(prev => ({ ...prev, notes: e.target.value }))} />
                       </div>
                   </div>
-                  <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-5 rounded-lg shadow-md mt-6" onClick={handlePetDetailsSubmit}>Lanjutkan</button>
+                  <button className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-5 rounded-lg shadow-md mt-6 transition-colors" onClick={handlePetDetailsSubmit}>Lanjutkan</button>
                   <button className="w-full mt-3 text-slate-600 font-semibold py-2" onClick={() => setBookingStep(2)}>Kembali</button>
                 </div>
             )}
 
             {bookingStep === 4 && (
                 <div>
-                  <h2 className="text-2xl font-semibold text-slate-700 mb-4">Langkah 4: Konfirmasi Booking</h2>
-                  <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-6">
-                    <h3 className="text-xl font-bold text-slate-800 mb-4">Ringkasan Pesanan</h3>
+                  <h2 className="text-2xl font-semibold text-slate-700 mb-4 font-display">Langkah 4: Konfirmasi Booking</h2>
+                  <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6">
+                    <h3 className="text-xl font-bold text-slate-800 mb-4 font-display">Ringkasan Pesanan</h3>
                     <div className="space-y-2 text-slate-600 text-sm sm:text-base">
                       <p><strong>Nama Hewan:</strong> {bookingDetails.petName} ({bookingDetails.petType})</p>
                       <p><strong>Jumlah Hewan:</strong> {bookingDetails.numberOfPets}</p>
@@ -356,8 +380,8 @@ const BookingScreen = ({ appointments, onBookingSuccess, onNavigate }) => {
                     <hr className="my-4" />
                     <p className="text-right text-lg sm:text-xl font-bold text-slate-800">Total Biaya: {formatCurrency((bookingDetails.service.price * bookingDetails.numberOfPets) + bookingDetails.transportFee)}</p>
                   </div>
-                  <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-5 rounded-lg shadow-md disabled:bg-blue-300" onClick={confirmBooking} disabled={isUploading}>
-                    {isUploading ? 'Menyimpan...' : 'Konfirmasi & Buat Jadwal'}
+                  <button className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-5 rounded-lg shadow-md disabled:bg-teal-300 transition-colors" onClick={confirmBooking} disabled={isUploading}>
+                    Konfirmasi & Buat Jadwal
                   </button>
                   <button className="w-full mt-3 text-slate-600 font-semibold py-2" onClick={() => setBookingStep(3)}>Kembali</button>
                 </div>
@@ -383,14 +407,14 @@ const TodaysScheduleScreen = ({ appointments, onNavigate }) => {
         if (!address) return null;
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         return address.split(urlRegex).map((part, i) => 
-            part.match(urlRegex) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Buka di Peta</a> : part
+            part.match(urlRegex) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-teal-500 hover:underline">Buka di Peta</a> : part
         );
     };
 
     return (
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 text-center mb-8">Jadwal Grooming Hari Ini</h1>
-          {appointments.length === 0 ? (
+          <h1 className="text-3xl font-bold text-slate-800 text-center mb-8 font-display">Jadwal Grooming Hari Ini</h1>
+          {todaysAppointments.length === 0 ? (
             <p className="text-lg text-slate-600 text-center">Tidak ada jadwal untuk hari ini.</p>
           ) : (
             <div className="space-y-4">
@@ -398,7 +422,7 @@ const TodaysScheduleScreen = ({ appointments, onNavigate }) => {
                 const service = SERVICES.find(s => s.id === app.service.id);
                 const endTime = service ? getEndTime(app.time, service.duration * app.numberOfPets) : '';
                 return (
-                <div key={app.id} className="bg-white p-5 rounded-lg shadow-md border border-gray-200">
+                <div key={app.id} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex flex-col sm:flex-row gap-4">
                         <div className="flex-1">
                             <div className="flex justify-between items-start">
@@ -409,7 +433,7 @@ const TodaysScheduleScreen = ({ appointments, onNavigate }) => {
                                     {app.transportFee > 0 && <p className="text-md text-slate-600 my-1">Biaya Kunjungan: {formatCurrency(app.transportFee)}</p>}
                                 </div>
                                 <div className="text-right flex-shrink-0">
-                                    <p className="text-lg font-bold text-blue-600">{app.time} - {endTime}</p>
+                                    <p className="text-lg font-bold text-teal-600">{app.time} - {endTime}</p>
                                 </div>
                             </div>
                             {app.notes && <p className="text-sm text-slate-500 mt-2 pt-2 border-t">Catatan: {app.notes}</p>}
@@ -442,7 +466,7 @@ const TodaysScheduleScreen = ({ appointments, onNavigate }) => {
             })}
             </div>
           )}
-          <button className="w-full bg-gray-200 hover:bg-gray-300 text-slate-800 font-bold py-3 px-5 rounded-lg mt-8 shadow-md" onClick={() => onNavigate('home')}>
+          <button className="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-3 px-5 rounded-lg mt-8 shadow-sm transition-colors" onClick={() => onNavigate('home')}>
             Kembali ke Home
           </button>
         </div>
@@ -478,7 +502,7 @@ const App = () => {
 
     const renderScreen = () => {
         if (isLoading) {
-            return <div className="text-center text-slate-600">Memuat aplikasi...</div>;
+            return <div className="text-center text-slate-600 font-sans">Memuat aplikasi...</div>;
         }
         switch (screen) {
             case 'booking':
@@ -491,7 +515,7 @@ const App = () => {
     };
 
     return (
-        <main className="bg-gray-100 min-h-screen font-sans">
+        <main className="bg-beige-50 min-h-screen font-sans">
             <div className="p-4 sm:p-5 max-w-2xl mx-auto">
                 <CustomAlert title={alertInfo.title} message={alertInfo.message} onClose={() => setAlertInfo({ title: '', message: '' })} />
                 {renderScreen()}
